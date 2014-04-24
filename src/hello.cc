@@ -1,6 +1,6 @@
 
-
 #include <node/node.h>
+#include <node/node_buffer.h>
 #include <node/v8.h>
 
 #include <libfreenect/libfreenect.h>
@@ -12,8 +12,14 @@ freenect_device *f_dev;
 
 uint8_t *rgb_back;
 
+Persistent<Function> callback;
+
 void rgb_cb(freenect_device *dev, void *rgb, uint32_t timestamp) {
-	printf("CB called\n");
+	HandleScope scope;
+	const unsigned argc = 1;
+	Local<Value> argv[argc] = { Local<Value>::New(node::Buffer::New((char*)rgb, 640*480*3)->handle_) };
+	if (!callback.IsEmpty())
+		callback->Call(Context::GetCurrent()->Global(), argc, argv);
 }
 
 Handle<Value> startKinect(const Arguments& args) {
@@ -45,7 +51,6 @@ Handle<Value> startKinect(const Arguments& args) {
 
 Handle<Value> runKinect(const Arguments& args) {
 	HandleScope scope;
-
 	return scope.Close(Number::New(freenect_process_events(f_ctx)));
 }
 
@@ -61,13 +66,16 @@ Handle<Value> stopKinect(const Arguments& args) {
 	return scope.Close(Undefined());
 }
 
-Handle<Value> printFrame(const Arguments& args) {
+Handle<Value> setFrameCallback(const Arguments& args) {
 	HandleScope scope;
-	if (rgb_back) {
-		printf("%d %d\n",rgb_back[0], rgb_back[1]);
-	} else {
-		printf("rgb_back has no value\n");
+
+	if (!args[0]->IsFunction()) {
+		ThrowException(Exception::TypeError(String::New("Argument is not of type Function")));
+		return scope.Close(Undefined());
 	}
+
+	callback = Persistent<Function>::New(Local<Function>::Cast(args[0]));
+
 	return scope.Close(Undefined());
 }
 
@@ -75,7 +83,7 @@ void init(Handle<Object> exports) {
 	exports->Set(String::NewSymbol("startKinect"), FunctionTemplate::New(startKinect)->GetFunction());
 	exports->Set(String::NewSymbol("runKinect"), FunctionTemplate::New(runKinect)->GetFunction());
 	exports->Set(String::NewSymbol("stopKinect"), FunctionTemplate::New(stopKinect)->GetFunction());
-	exports->Set(String::NewSymbol("printFrame"), FunctionTemplate::New(printFrame)->GetFunction());
+	exports->Set(String::NewSymbol("setFrameCallback"), FunctionTemplate::New(setFrameCallback)->GetFunction());
 }
 
 NODE_MODULE(hello, init)
